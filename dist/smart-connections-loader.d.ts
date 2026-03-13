@@ -25,7 +25,16 @@ export declare class SmartConnectionsLoader {
      */
     getSources(): Map<string, SmartSource>;
     /**
-     * Get a specific source by path
+     * Normalize a path for comparison by applying NFC Unicode normalization.
+     * This handles filenames with curly quotes, smart apostrophes, narrow
+     * no-break spaces, and other Unicode variants that may differ between
+     * what the caller provides and what is stored in the index.
+     */
+    private normalizePath;
+    /**
+     * Get a specific source by path.
+     * Falls back to a normalized comparison if the exact key is not found,
+     * so that paths with smart quotes or other Unicode variants still resolve.
      */
     getSource(notePath: string): SmartSource | undefined;
     /**
@@ -41,7 +50,10 @@ export declare class SmartConnectionsLoader {
      */
     getVaultPath(): string;
     /**
-     * Read the actual markdown content of a note
+     * Read the actual markdown content of a note.
+     * Falls back to a normalized path comparison when the exact path does not
+     * exist on disk, handling filenames with smart quotes or other Unicode
+     * variants that differ between the index and the filesystem.
      */
     readNoteContent(notePath: string): string;
     /**

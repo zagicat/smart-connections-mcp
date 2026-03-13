@@ -93,10 +93,32 @@ export class SmartConnectionsLoader {
         return this.sources;
     }
     /**
-     * Get a specific source by path
+     * Normalize a path for comparison by applying NFC Unicode normalization.
+     * This handles filenames with curly quotes, smart apostrophes, narrow
+     * no-break spaces, and other Unicode variants that may differ between
+     * what the caller provides and what is stored in the index.
+     */
+    normalizePath(p) {
+        return p.normalize('NFC');
+    }
+    /**
+     * Get a specific source by path.
+     * Falls back to a normalized comparison if the exact key is not found,
+     * so that paths with smart quotes or other Unicode variants still resolve.
      */
     getSource(notePath) {
-        return this.sources.get(notePath);
+        // Fast path: exact match
+        const exact = this.sources.get(notePath);
+        if (exact !== undefined)
+            return exact;
+        // Fallback: compare normalized forms
+        const normalizedInput = this.normalizePath(notePath);
+        for (const [key, source] of this.sources) {
+            if (this.normalizePath(key) === normalizedInput) {
+                return source;
+            }
+        }
+        return undefined;
     }
     /**
      * Get configuration
@@ -136,14 +158,30 @@ export class SmartConnectionsLoader {
         return this.vaultPath;
     }
     /**
-     * Read the actual markdown content of a note
+     * Read the actual markdown content of a note.
+     * Falls back to a normalized path comparison when the exact path does not
+     * exist on disk, handling filenames with smart quotes or other Unicode
+     * variants that differ between the index and the filesystem.
      */
     readNoteContent(notePath) {
         const fullPath = path.join(this.vaultPath, notePath);
-        if (!fs.existsSync(fullPath)) {
-            throw new Error(`Note not found at: ${fullPath}`);
+        // Fast path: exact path exists
+        if (fs.existsSync(fullPath)) {
+            return fs.readFileSync(fullPath, 'utf-8');
         }
-        return fs.readFileSync(fullPath, 'utf-8');
+        // Fallback: scan the parent directory for a file whose NFC-normalized
+        // name matches the NFC-normalized form of the requested filename.
+        const dir = path.dirname(fullPath);
+        const basename = path.basename(fullPath);
+        const normalizedBasename = basename.normalize('NFC');
+        if (fs.existsSync(dir)) {
+            const entries = fs.readdirSync(dir);
+            const match = entries.find(e => e.normalize('NFC') === normalizedBasename);
+            if (match) {
+                return fs.readFileSync(path.join(dir, match), 'utf-8');
+            }
+        }
+        throw new Error(`Note not found at: ${fullPath}`);
     }
     /**
      * Extract content for specific blocks/sections
